@@ -41,14 +41,35 @@ func main() {
 		return
 	}
 
-	ChanWork := make(chan pkg.ScanExec)
-	ChanResult := make(chan pkg.ScanResult)
+	ChanWork := make(chan pkg.ScanExec, len(s.Port))
+	ChanResult := make(chan pkg.ScanResult, len(s.Port))
+	writeData := make([]string, 0, len(s.Port)+2)
+
+	go func() {
+		headerString := fmt.Sprintf("Scanning: %s | Protocol: %s | Num Ports: %d | Num threads: %d | DisplayType: %d", s.Addr, protocolMap[s.Protocol], len(s.Port), s.MaxWorkers, s.DisplayType)
+		color.Blue(headerString)
+		if s.DisplayType == pkg.WriteFile {
+			writeData = append(writeData, "Scan created at: "+time.Now().String(), headerString)
+		}
+
+		for res := range ChanResult {
+			switch s.DisplayType {
+			case pkg.AllConsole, pkg.WriteFile:
+				writeData = append(writeData, res.FormatResult())
+			case pkg.OpenConsole:
+				if res.PortStatus == pkg.Open || res.PortStatus == pkg.OpenFiltered {
+					writeData = append(writeData, res.FormatResult())
+				}
+			}
+		}
+	}()
+
+	bar := progressbar.Default(int64(len(s.Port)))
 
 	var wg sync.WaitGroup
-	var wgPrint sync.WaitGroup
 	for range s.MaxWorkers {
 		wg.Add(1)
-		go worker(ChanWork, ChanResult, executeScanMap, s.Protocol, &wg)
+		go worker(ChanWork, ChanResult, executeScanMap, s.Protocol, &wg, bar)
 	}
 
 	go func() {
@@ -61,52 +82,17 @@ func main() {
 		close(ChanWork)
 	}()
 
-	wgPrint.Add(1)
-	go func() {
-		result := make([]pkg.ScanResult, 0, len(s.Port))
-		var filedata [][]byte
-		headerString := fmt.Sprintf("Scanning: %s | Protocol: %s | Num Ports: %d | Num threads: %d", s.Addr, protocolMap[s.Protocol], len(s.Port), s.MaxWorkers)
-		color.Blue(headerString)
-
-		if s.DisplayType == pkg.WriteFile {
-			filedata = make([][]byte, 0, len(s.Port)+1)
-			filedata = append(filedata, []byte("Scan created at: "+time.Now().String()), []byte(headerString))
-		}
-
-		bar := progressbar.Default(int64(len(s.Port)))
-		defer wgPrint.Done()
-
-		for res := range ChanResult {
-			bar.Add(1)
-			result = append(result, res)
-		}
-
-		for _, res := range result {
-			switch s.DisplayType {
-			case pkg.AllConsole:
-				res.WriteConsole()
-			case pkg.OpenConsole:
-				if res.PortStatus == pkg.Open || res.PortStatus == pkg.OpenFiltered {
-					res.WriteConsole()
-				}
-			case pkg.WriteFile:
-				filedata = append(filedata, res.CreateFileData())
-			}
-		}
-
-		if s.DisplayType == pkg.WriteFile {
-			err := pkg.WriteToFile(filedata, s.FileName)
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(0)
-			}
-			fmt.Printf("Scan results written to %s\n", s.FileName)
-		}
-	}()
-
 	wg.Wait()
 	close(ChanResult)
-	wgPrint.Wait()
+
+	if s.DisplayType == pkg.WriteFile {
+		pkg.WriteToFile(writeData, s.FileName)
+		fmt.Printf("Scan results written to %s\n", s.FileName)
+	} else {
+		for _, line := range writeData {
+			fmt.Println(string(line))
+		}
+	}
 }
 
 func worker(
@@ -115,14 +101,27 @@ func worker(
 	executeScanMap map[int]func(pkg.ScanExec, chan pkg.ScanResult),
 	protocol int,
 	wg *sync.WaitGroup,
+	bar *progressbar.ProgressBar,
 ) {
 	defer wg.Done()
 
 	for job := range ChanWork {
+		bar.Add(1)
 		if fn, ok := executeScanMap[protocol]; ok {
 			fn(job, ChanResult)
 		} else {
 			fmt.Println("Unknown protocol:", protocol)
 		}
+	}
+}
+
+func workerWriting(res chan pkg.ScanResult, s pkg.ScanConfig, writeData [][]byte) {
+	switch s.DisplayType {
+	case pkg.AllConsole:
+		return
+	case pkg.OpenConsole:
+		return
+	case pkg.WriteFile:
+		return
 	}
 }
