@@ -12,13 +12,13 @@ func (scan ScanResult) FormatResult() string {
 	formatString := ""
 	switch scan.PortStatus {
 	case Open:
-		formatString = color.RedString(fmt.Sprintf("Port: %d | Status: Open | Service: %s | OS: %s", scan.Port, scan.Service, scan.OsType))
+		formatString = color.RedString(fmt.Sprintf("Port: %d | Status: Open | Service: %s", scan.Port, scan.Service))
 	case Closed:
-		formatString = color.GreenString(fmt.Sprintf("Port: %d | Status: Closed | Service: %s | OS: %s", scan.Port, scan.Service, scan.OsType))
+		formatString = color.GreenString(fmt.Sprintf("Port: %d | Status: Closed | Service: %s", scan.Port, scan.Service))
 	case Filtered:
-		formatString = color.YellowString(fmt.Sprintf("Port: %d | Status: Filtered | Service: %s | OS: %s", scan.Port, scan.Service, scan.OsType))
+		formatString = color.YellowString(fmt.Sprintf("Port: %d | Status: Filtered | Service: %s", scan.Port, scan.Service))
 	case OpenFiltered:
-		formatString = color.YellowString(fmt.Sprintf("Port: %d | Status: Open/Filtered | Service: %s | OS: %s", scan.Port, scan.Service, scan.OsType))
+		formatString = color.YellowString(fmt.Sprintf("Port: %d | Status: Open/Filtered | Service: %s", scan.Port, scan.Service))
 	}
 
 	return formatString

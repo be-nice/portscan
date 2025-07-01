@@ -40,5 +40,4 @@ type ScanResult struct {
 	Port       int
 	PortStatus int
 	Service    string
-	OsType     string
 }
