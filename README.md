@@ -1,9 +1,9 @@
-# PortScanner by Sindustries
+# PortScanner by Kalev Liho
 
 ## Warning
 
 Only use it on networks you have permission to scan!  
-It port scanning can be a crime
+Port scanning can be illegal!!
 
 ## Introduction
 
