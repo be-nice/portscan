@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"portSec/pkg"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/schollz/progressbar/v3"
-
+	"fortio.org/progressbar"
 	"github.com/fatih/color"
 )
 
@@ -44,8 +45,14 @@ func main() {
 	ChanWork := make(chan pkg.ScanExec, len(s.Port))
 	ChanResult := make(chan pkg.ScanResult, len(s.Port))
 	writeData := make([]string, 0, len(s.Port)+2)
+	bar := progressbar.NewBar()
+	writer := bar.Writer()
+	var counter int32 = 0
 
-	go func() {
+	var wgWrite sync.WaitGroup
+	wgWrite.Add(1)
+	go func(w io.Writer) {
+		defer wgWrite.Done()
 		headerString := fmt.Sprintf("Scanning: %s | Protocol: %s | Num Ports: %d | Num threads: %d | DisplayType: %d", s.Addr, protocolMap[s.Protocol], len(s.Port), s.MaxWorkers, s.DisplayType)
 		color.Blue(headerString)
 		if s.DisplayType == pkg.WriteFile {
@@ -54,22 +61,22 @@ func main() {
 
 		for res := range ChanResult {
 			switch s.DisplayType {
-			case pkg.AllConsole, pkg.WriteFile:
+			case pkg.WriteFile:
 				writeData = append(writeData, res.FormatResult())
 			case pkg.OpenConsole:
 				if res.PortStatus == pkg.Open || res.PortStatus == pkg.OpenFiltered {
-					writeData = append(writeData, res.FormatResult())
+					fmt.Fprintln(w, res.FormatResult())
 				}
+			default:
+				fmt.Fprintln(w, res.FormatResult())
 			}
 		}
-	}()
-
-	bar := progressbar.Default(int64(len(s.Port)))
+	}(writer)
 
 	var wg sync.WaitGroup
 	for range s.MaxWorkers {
 		wg.Add(1)
-		go worker(ChanWork, ChanResult, executeScanMap, s.Protocol, &wg, bar)
+		go worker(ChanWork, ChanResult, executeScanMap, s.Protocol, len(s.Port), &counter, &wg, bar)
 	}
 
 	go func() {
@@ -83,15 +90,12 @@ func main() {
 	}()
 
 	wg.Wait()
+	bar.End()
 	close(ChanResult)
+	wgWrite.Wait()
 
 	if s.DisplayType == pkg.WriteFile {
 		pkg.WriteToFile(writeData, s.FileName)
-		fmt.Printf("Scan results written to %s\n", s.FileName)
-	} else {
-		for _, line := range writeData {
-			fmt.Println(string(line))
-		}
 	}
 }
 
@@ -100,13 +104,16 @@ func worker(
 	ChanResult chan pkg.ScanResult,
 	executeScanMap map[int]func(pkg.ScanExec, chan pkg.ScanResult),
 	protocol int,
+	elemCount int,
+	counter *int32,
 	wg *sync.WaitGroup,
-	bar *progressbar.ProgressBar,
+	bar *progressbar.Bar,
 ) {
 	defer wg.Done()
 
 	for job := range ChanWork {
-		bar.Add(1)
+		atomic.AddInt32(counter, 1)
+		bar.Progress(100. * float64(atomic.LoadInt32(counter)) / float64(elemCount))
 		if fn, ok := executeScanMap[protocol]; ok {
 			fn(job, ChanResult)
 		} else {

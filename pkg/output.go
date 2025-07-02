@@ -41,5 +41,7 @@ func WriteToFile(data []string, fileName string) error {
 		}
 	}
 
+	fmt.Printf("Results written to %s\n", fileName)
+
 	return nil
 }
